@@ -1,0 +1,574 @@
+import React, { useState, useEffect, useRef } from "react";
+
+// --- KONSTANT AK STIL (Tailwind Klas nan Objè pou fasilite) ---
+const COLORS = {
+  bg: "bg-[#050A14]",
+  card: "bg-[#0A1628]",
+  border: "border-[#1A2A4A]",
+  blue: "from-[#1B6CF2] to-[#00D4FF]",
+  cyan: "text-[#00D4FF]",
+  gold: "text-[#FFD700]",
+  green: "text-[#00FF88]",
+  red: "from-[#FF3366] to-[#FF6B35]",
+  white: "text-[#F0F4FF]",
+  gray: "text-[#8A9BC0]",
+};
+
+// --- MOCK DATA ---
+const mockPosts = [
+  { id: 1, user: "MarieHaïti 🇭🇹", avatar: "MH", content: "Bonjou tout moun! Tanpri swiv mwen pou plis kontni 🔥", likes: 1240, comments: 89, shares: 45, coins: 120, type: "text", verified: true, vip: false },
+  { id: 2, user: "KingJeanJean", avatar: "KJ", content: "Nouvo pwodwi disponib nan Marketplace! Rad pou moun ki elegant 👔✨", likes: 876, comments: 34, shares: 22, coins: 87, type: "product", verified: false, vip: false },
+  { id: 3, user: "DiamondGirl 💎", avatar: "DG", content: "Live mwen te fè yè a te bèl anpil! Mèsi pou tout gifts yo 💕", likes: 2100, comments: 156, shares: 78, coins: 340, type: "text", verified: true, vip: true },
+  { id: 4, user: "TechBossAyiti", avatar: "TB", content: "Mwen fèk genyen 500 coins nan Spin Wheel! Eseye chans ou tou 🎯", likes: 567, comments: 23, shares: 12, coins: 55, type: "text", verified: false, vip: false },
+];
+
+const mockLives = [
+  { id: 1, user: "QueenRose 🌹", avatar: "QR", viewers: 1240, gifts: 89, vip: true },
+  { id: 2, user: "DJKloudHaïti", avatar: "DK", viewers: 876, gifts: 34, vip: false },
+  { id: 3, user: "BusinessKing", avatar: "BK", viewers: 456, gifts: 12, vip: true },
+];
+
+const mockProducts = [
+  { id: 1, name: "Rad Élégant", price: "1500 HTG", seller: "FashionBoss", emoji: "👔", rating: 4.8 },
+  { id: 2, name: "Logo Pwofesyonèl", price: "800 HTG", seller: "DesignPro", emoji: "🎨", rating: 5.0 },
+  { id: 3, name: "iPhone 14 Pro", price: "85000 HTG", seller: "TechStore", emoji: "📱", rating: 4.6 },
+  { id: 4, name: "Soulye Nike", price: "4500 HTG", seller: "SneakerHaïti", emoji: "👟", rating: 4.9 },
+];
+
+const walletTransactions = [
+  { id: 1, type: "in", desc: "Bonus Parrainage - 3 zanmi", amount: "+150 coins", date: "Jodi a" },
+  { id: 2, type: "in", desc: "Live Gifts resevwa", amount: "+320 coins", date: "Yè" },
+  { id: 3, type: "out", desc: "Retrait MonCash", amount: "-500 HTG", date: "Lendi" },
+  { id: 4, type: "in", desc: "Kontni Viral Bonus", amount: "+200 coins", date: "Dimanch" },
+];
+
+export default function RezoHaiti() {
+  const [tab, setTab] = useState("feed");
+  const [liked, setLiked] = useState({});
+  const [spinResult, setSpinResult] = useState(null);
+  const [spinning, setSpinning] = useState(false);
+  const [spinAngle, setSpinAngle] = useState(0);
+  const [notification, setNotification] = useState(null);
+  const [aiInput, setAiInput] = useState("");
+  const [aiResponse, setAiResponse] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [liveActive, setLiveActive] = useState(false);
+  const [giftAnim, setGiftAnim] = useState(null);
+  const [coins, setCoins] = useState(1250);
+  const [balance, setBalance] = useState(3200);
+
+  const showNotif = (msg, type = "success") => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 2500);
+  };
+
+  const toggleLike = (id) => {
+    setLiked((prev) => ({ ...prev, [id]: !prev[id] }));
+    if (!liked[id]) {
+      setCoins((c) => c + 1);
+      showNotif("+1 coin pou like ou a! 🪙");
+    }
+  };
+
+  const handleSpin = () => {
+    if (spinning) return;
+    setSpinning(true);
+    setSpinResult(null);
+    const prizes = [50, 100, 20, 200, 10, 500, 30, 150];
+    const idx = Math.floor(Math.random() * prizes.length);
+    const totalAngle = spinAngle + 1800 + idx * (360 / prizes.length);
+    setSpinAngle(totalAngle);
+
+    setTimeout(() => {
+      setSpinning(false);
+      const won = prizes[idx];
+      setSpinResult(won);
+      setCoins((c) => c + won);
+      showNotif(`🎉 Ou genyen ${won} coins!`, "success");
+    }, 2800);
+  };
+
+  const sendGift = (gift, coins_val) => {
+    if (coins < coins_val) {
+      showNotif("Pa ase coins!", "error");
+      return;
+    }
+    setCoins((c) => c - coins_val);
+    setGiftAnim(gift);
+    setTimeout(() => setGiftAnim(null), 1500);
+    showNotif(`${gift} Cadeau voye! +${coins_val} pou streamer a`);
+  };
+
+  const askAI = async () => {
+    if (!aiInput.trim()) return;
+    setAiLoading(true);
+    setAiResponse("");
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          system: "Ou se yon asistan AI pou Rezo Haïti, pi gwo platfòm sosyal an Ayiti. Reponn an kreyòl ayisyen. Ede itilizatè yo ekri bio, kreye posts, fè publicité, epi ba yo konsèy pou grandi sou rezo a. Reponn kout, klè, ak yon stil enteresan ak emoji.",
+          messages: [{ role: "user", content: aiInput }],
+        }),
+      });
+      const data = await res.json();
+      setAiResponse(data.content?.[0]?.text || "AI pa disponib kounye a.");
+    } catch {
+      setAiResponse("Erè koneksyon. Eseye ankò.");
+    }
+    setAiLoading(false);
+  };
+
+  const tabs = [
+    { id: "feed", icon: "🏠", label: "Accueil" },
+    { id: "live", icon: "🔴", label: "Live" },
+    { id: "wallet", icon: "💰", label: "Wallet" },
+    { id: "market", icon: "🛒", label: "Market" },
+    { id: "games", icon: "🎮", label: "Jeux" },
+    { id: "ai", icon: "🤖", label: "AI VIP" },
+    { id: "profile", icon: "👤", label: "Profil" },
+  ];
+
+  return (
+    <div className={`min-h-screen ${COLORS.bg} text-[#F0F4FF] font-sans pb-24 max-w-md mx-auto relative shadow-2xl overflow-x-hidden`}>
+      
+      {/* --- NOTIFICATION BLÒK --- */}
+      {notification && (
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-xl shadow-lg border text-sm font-medium animate-bounce backdrop-blur-md ${
+          notification.type === "error" ? "bg-red-500/20 border-red-500 text-red-200" : "bg-emerald-500/20 border-emerald-500 text-emerald-200"
+        }`}>
+          {notification.msg}
+        </div>
+      )}
+
+      {/* --- FLOATING GIFT ANIMATION --- */}
+      {giftAnim && (
+        <div className="fixed inset-0 pointer-events-none flex items-center justify-center z-50 animate-ping text-8xl">
+          {giftAnim}
+        </div>
+      )}
+
+      {/* --- HEADER --- */}
+      <header className="sticky top-0 bg-[#050A14]/90 backdrop-blur-md border-b border-[#1A2A4A] p-4 flex justify-between items-center z-40">
+        <div>
+          <h1 className="text-xl font-black tracking-wider bg-gradient-to-r from-[#1B6CF2] to-[#00D4FF] bg-clip-text text-transparent">
+            REZO HAÏTI
+          </h1>
+          <p className="text-[10px] text-[#8A9BC0]">🇭🇹 Pi gwo platfòm an Ayiti</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="bg-[#0A1628] border border-[#1A2A4A] px-3 py-1 rounded-full flex items-center gap-1.5 shadow-inner">
+            <span className="text-sm">🪙</span>
+            <span className="text-xs font-bold text-[#FFD700]">{coins.toLocaleString()}</span>
+          </div>
+          <button onClick={() => setTab("ai")} className="w-8 h-8 rounded-full bg-gradient-to-tr from-[#FFD700] to-[#FFA500] flex items-center justify-center shadow-lg transform active:scale-95 transition">
+            👑
+          </button>
+        </div>
+      </header>
+
+      {/* --- MAIN CONTENT WINDOW --- */}
+      <main className="p-4">
+        
+        {/* ===== FEED TAB ===== */}
+        {tab === "feed" && (
+          <div className="space-y-4">
+            {/* Story Bar */}
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+              {["+ Story", "MH", "KJ", "DG", "TB", "QR", "DK"].map((s, i) => (
+                <div key={i} className="flex flex-col items-center flex-shrink-0 cursor-pointer">
+                  <div className={`w-14 h-14 rounded-full flex items-center justify-center font-bold text-xs bg-[#0A1628] border-2 ${
+                    i === 0 ? "border-dashed border-[#8A9BC0]" : "border-[#00D4FF]"
+                  }`}>
+                    {s}
+                  </div>
+                  <span className="text-[10px] text-[#8A9BC0] mt-1">{i === 0 ? "Ajoute" : s}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Posts Stream */}
+            {mockPosts.map((post) => (
+              <div key={post.id} className="bg-[#0A1628] border border-[#1A2A4A] rounded-2xl p-4 space-y-3 shadow-md">
+                <div className="flex justify-between items-start">
+                  <div className="flex gap-3 items-center">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-[#1B6CF2] to-[#00D4FF] flex items-center justify-center font-bold text-sm">
+                      {post.avatar}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-sm font-bold">{post.user}</span>
+                        {post.verified && <span className="text-xs text-[#00D4FF]">✅</span>}
+                        {post.vip && <span className="text-[9px] bg-[#FFD700] text-black font-extrabold px-1 rounded">VIP</span>}
+                      </div>
+                      <span className="text-[10px] text-[#8A9BC0]">Kounye a • 🌍 Piblik</span>
+                    </div>
+                  </div>
+                  <button className="text-[#8A9BC0] hover:text-white">⋯</button>
+                </div>
+
+                <p className="text-sm leading-relaxed text-[#F0F4FF]">{post.content}</p>
+
+                {post.type === "product" && (
+                  <div onClick={() => setTab("market")} className="bg-[#050A14] border border-[#1A2A4A] rounded-xl p-3 flex justify-between items-center cursor-pointer hover:border-[#1B6CF2] transition">
+                    <span className="text-xs text-[#8A9BC0]">🛍️ Wè Pwodwi nan Marketplace</span>
+                    <span className="text-xs text-[#00D4FF] font-bold">Wè &rarr;</span>
+                  </div>
+                )}
+
+                {/* Post Actions */}
+                <div className="flex justify-between items-center pt-2 border-t border-[#1A2A4A]/50">
+                  {[
+                    { icon: liked[post.id] ? "❤️" : "🤍", count: post.likes + (liked[post.id] ? 1 : 0), action: () => toggleLike(post.id) },
+                    { icon: "💬", count: post.comments, action: () => {} },
+                    { icon: "↗️", count: post.shares, action: () => showNotif("Lyen kopye! 🔗") },
+                    { icon: "🪙", count: post.coins, action: () => {} },
+                  ].map((btn, idx) => (
+                    <button key={idx} onClick={btn.action} className="flex items-center gap-1.5 text-xs text-[#8A9BC0] hover:text-white transition">
+                      <span className="text-base">{btn.icon}</span>
+                      <span>{btn.count >= 1000 ? (btn.count / 1000).toFixed(1) + "k" : btn.count}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+
+            {/* Floating Create Button */}
+            <button onClick={() => showNotif("📝 Editè post ouvè!")} className="fixed bottom-24 right-4 w-14 h-14 rounded-full bg-gradient-to-r from-[#1B6CF2] to-[#00D4FF] flex items-center justify-center text-white text-2xl shadow-xl transform active:scale-95 transition z-40">
+              +
+            </button>
+          </div>
+        )}
+
+        {/* ===== LIVE TAB ===== */}
+        {tab === "live" && (
+          <div className="space-y-4">
+            {!liveActive ? (
+              <>
+                <div className="flex justify-between items-center">
+                  <h2 className="text-base font-bold flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse"></span> Lives Aktif
+                  </h2>
+                  <span className="text-xs text-[#8A9BC0]">
+                    {mockLives.reduce((s, l) => s + l.viewers, 0).toLocaleString()} moun ap gade
+                  </span>
+                </div>
+
+                <div className="grid gap-3">
+                  {mockLives.map((live) => (
+                    <div key={live.id} onClick={() => { setLiveActive(true); showNotif(`📺 Ou antre nan live ${live.user}!`); }} className="bg-[#0A1628] border border-[#1A2A4A] rounded-2xl p-4 flex items-center justify-between cursor-pointer hover:border-red-500/40 transition">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-red-600 flex items-center justify-center font-bold text-sm relative border-2 border-red-500">
+                          {live.avatar}
+                          <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 bg-red-500 text-[8px] font-black px-1 rounded-md">LIVE</span>
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-1">
+                            <h3 className="text-sm font-bold">{live.user}</h3>
+                            {live.vip && <span className="text-[9px] bg-[#FFD700] text-black font-bold px-0.5 rounded">VIP</span>}
+                          </div>
+                          <p className="text-xs text-[#8A9BC0]">👁️ {live.viewers.toLocaleString()} • 🎁 {live.gifts} gifts</p>
+                        </div>
+                      </div>
+                      <button className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-full font-bold transition">Antre</button>
+                    </div>
+                  ))}
+                </div>
+
+                <button onClick={() => { setLiveActive(true); showNotif("🎥 Live ou kòmanse!"); }} className="w-full py-3.5 mt-2 bg-gradient-to-r from-[#FF3366] to-[#FF6B35] rounded-xl font-bold text-sm shadow-lg shadow-red-500/20 active:scale-[0.99] transition">
+                  🎥 Kòmanse Pwòp Live Ou
+                </button>
+              </>
+            ) : (
+              /* ACTIVE STREAM INTERFACE (Tik Tok Style) */
+              <div className="relative bg-gradient-to-b from-[#0D1E38] to-[#050A14] h-[70vh] rounded-2xl border border-red-500/30 overflow-hidden flex flex-col justify-between p-4">
+                <div className="flex justify-between items-center z-10">
+                  <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md p-1.5 pr-3 rounded-full">
+                    <div className="w-8 h-8 rounded-full bg-red-500 flex items-center justify-center font-bold text-xs">QR</div>
+                    <div>
+                      <p className="text-xs font-bold">QueenRose 🌹</p>
+                      <p className="text-[9px] text-red-400 font-bold">🔴 LIVE</p>
+                    </div>
+                  </div>
+                  <div className="bg-black/40 px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1">
+                    👁️ 1,240
+                  </div>
+                </div>
+
+                {/* Virtual Video Visual Placeholder */}
+                <div className="absolute inset-0 flex items-center justify-center opacity-10 select-none">
+                  <span className="text-9xl">🎥</span>
+                </div>
+
+                {/* Controls & Gifts Interaction Box */}
+                <div className="space-y-3 z-10">
+                  <div className="bg-black/30 backdrop-blur-sm p-3 rounded-xl border border-[#1A2A4A]">
+                    <h4 className="text-xs font-bold text-[#8A9BC0] mb-2">🎁 Voye yon kado pou sipòte kreyatè a:</h4>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[["🌹", 10], ["💎", 50], ["🏆", 100], ["🚀", 200]].map(([icon, val]) => (
+                        <div key={val} onClick={() => sendGift(icon, val)} className="bg-[#0A1628]/80 border border-[#1A2A4A] rounded-xl py-2 flex flex-col items-center justify-center cursor-pointer hover:scale-105 active:scale-95 transition">
+                          <span className="text-xl">{icon}</span>
+                          <span className="text-[10px] font-bold mt-1 text-[#FFD700]">{val} 🪙</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button onClick={() => setLiveActive(false)} className="w-full py-2 bg-transparent border border-red-500/50 hover:bg-red-500/10 text-red-400 rounded-xl text-xs font-bold transition">
+                    ✖ Kite Live sa
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== WALLET TAB ===== */}
+        {tab === "wallet" && (
+          <div className="space-y-4">
+            {/* Balance Card */}
+            <div className="bg-gradient-to-br from-[#0A1628] to-[#1A2A4A] border border-[#1A2A4A] rounded-2xl p-5 shadow-lg relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#00D4FF]/10 rounded-full blur-2xl"></div>
+              <p className="text-xs text-[#8A9BC0] uppercase tracking-wider font-semibold">Balans Total Ou</p>
+              <h2 className="text-3xl font-black text-white mt-1">{balance.toLocaleString()} <span className="text-sm font-bold text-[#00D4FF]">HTG</span></h2>
+              
+              <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-[#1A2A4A]/50">
+                <div>
+                  <p className="text-[10px] text-[#8A9BC0]">Token Disponib</p>
+                  <p className="text-sm font-bold text-[#FFD700]">🪙 {coins.toLocaleString()} Coins</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-[#8A9BC0]">USD Ekivalan</p>
+                  <p className="text-sm font-bold text-emerald-400">≈ ${(balance / 130).toFixed(2)}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-3 gap-3">
+              {[["💳", "Depoze"], ["🏧", "Retire"], ["📤", "Voye"]].map(([icon, label]) => (
+                <button key={label} onClick={() => showNotif(`${label} - Disponib byento!`)} className="bg-[#0A1628] border border-[#1A2A4A] rounded-xl p-3 flex flex-col items-center justify-center gap-1 hover:border-[#1B6CF2] transition active:scale-95">
+                  <span className="text-xl">{icon}</span>
+                  <span className="text-xs font-semibold">{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Integration Providers */}
+            <div className="bg-[#0A1628] border border-[#1A2A4A] rounded-2xl p-4 space-y-3">
+              <h3 className="text-xs font-bold text-[#8A9BC0]">📱 Sistèm Retrè Sipòte</h3>
+              <div className="grid grid-cols-2 gap-2">
+                {[["📱", "MonCash", "Aktif"], ["💳", "NatCash", "Aktif"], ["🌍", "PayPal", "Byento"], ["₿", "Crypto", "Byento"]].map(([icon, name, status]) => (
+                  <div key={name} className="bg-[#050A14] p-2.5 rounded-xl flex items-center justify-between border border-[#1A2A4A]">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">{icon}</span>
+                      <span className="text-xs font-bold">{name}</span>
+                    </div>
+                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${status === "Aktif" ? "bg-emerald-500/20 text-emerald-400" : "bg-gray-500/20 text-[#8A9BC0]"}`}>{status}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Transaction Ledger */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-bold text-[#8A9BC0]">📊 Dènye Tranzaksyon</h3>
+              <div className="space-y-2">
+                {walletTransactions.map((tx) => (
+                  <div key={tx.id} className="bg-[#0A1628] border border-[#1A2A4A] rounded-xl p-3 flex justify-between items-center text-xs">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-7 h-7 rounded-full flex items-center justify-center font-bold ${tx.type === "in" ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}>
+                        {tx.type === "in" ? "⬇️" : "⬆️"}
+                      </span>
+                      <div>
+                        <p className="font-bold">{tx.desc}</p>
+                        <p className="text-[10px] text-[#8A9BC0]">{tx.date}</p>
+                      </div>
+                    </div>
+                    <span className={`font-black ${tx.type === "in" ? "text-emerald-400" : "text-red-400"}`}>{tx.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ===== MARKETPLACE TAB ===== */}
+        {tab === "market" && (
+          <div className="space-y-4">
+            {/* Category Slider */}
+            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {["Tout", "Rad", "Tech", "Sèvis", "Soulye", "Crypto"].map((cat, i) => (
+                <button key={cat} className={`text-xs px-4 py-2 rounded-full font-bold whitespace-nowrap transition ${
+                  i === 0 ? "bg-[#1B6CF2] text-white" : "bg-[#0A1628] border border-[#1A2A4A] text-[#8A9BC0]"
+                }`}>{cat}</button>
+              ))}
+            </div>
+
+            {/* Grid Store layout */}
+            <div className="grid grid-cols-2 gap-3">
+              {mockProducts.map((p) => (
+                <div key={p.id} className="bg-[#0A1628] border border-[#1A2A4A] rounded-2xl p-3 flex flex-col justify-between space-y-2 shadow-sm">
+                  <div className="bg-[#050A14] rounded-xl h-24 flex items-center justify-center text-4xl">{p.emoji}</div>
+                  <div>
+                    <h4 className="text-xs font-bold line-clamp-1">{p.name}</h4>
+                    <p className="text-[10px] text-[#8A9BC0]">👤 {p.seller} • ⭐ {p.rating}</p>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-xs font-black text-[#00D4FF]">{p.price}</span>
+                    <button onClick={() => showNotif(`🛒 ${p.name} ajoute nan panye!`)} className="bg-[#1B6CF2] hover:bg-blue-600 text-white text-[10px] px-2.5 py-1 rounded-lg font-bold transition">Achte</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button onClick={() => showNotif("🛍️ Ajoute pwodwi ou!")} className="w-full py-3 bg-gradient-to-r from-[#1B6CF2] to-[#00D4FF] rounded-xl font-bold text-sm shadow-md active:scale-[0.99] transition">
+              + Vann Yon Pwodwi Kounye a
+            </button>
+          </div>
+        )}
+
+        {/* ===== GAMES / SPIN WHEEL TAB ===== */}
+        {tab === "games" && (
+          <div className="space-y-5">
+            <div className="text-center">
+              <h2 className="text-lg font-black tracking-wide">🎮 Mini Jwèt</h2>
+              <p className="text-xs text-[#8A9BC0]">Jwe jwèt amizan epi fete pandan w ap touche coins</p>
+            </div>
+
+            {/* Spin Wheel Arena */}
+            <div className="bg-[#0A1628] border border-[#1A2A4A] rounded-2xl p-4 flex flex-col items-center space-y-4 shadow-inner">
+              <div className="text-center">
+                <h3 className="text-sm font-bold">🎡 Wou Chans "Spin Wheel"</h3>
+                <p className="text-[10px] text-[#8A9BC0]">Koute 10 Coins pou w vire l</p>
+              </div>
+
+              {/* Graphical Circular Wheel Wrapper */}
+              <div className="relative w-44 h-44 my-2 flex items-center justify-center">
+                <div 
+                  ref={spinRef}
+                  style={{ transform: `rotate(${spinAngle}deg)`, transition: spinning ? "transform 2.8s cubic-bezier(0.1, 0.8, 0.1, 1)" : "none" }}
+                  className="w-full h-full rounded-full border-4 border-[#1A2A4A] bg-gradient-to-tr from-[#050A14] to-[#1A2A4A] shadow-lg flex items-center justify-center overflow-hidden relative"
+                >
+                  {/* Visual segments representation */}
+                  <div className="absolute inset-0 flex items-center justify-center opacity-30 text-[9px] font-bold">
+                    {["50", "100", "20", "200", "10", "500", "30", "150"].map((v, i) => (
+                      <span key={i} style={{ transform: `rotate(${i * 45}deg) translateY(-60px)` }} className="absolute font-black text-white">{v}</span>
+                    ))}
+                  </div>
+                  <div className="w-10 h-10 rounded-full bg-[#00D4FF] z-10 shadow-md border-2 border-white flex items-center justify-center font-bold text-xs text-black">🎯</div>
+                </div>
+                {/* Pointer top indicator */}
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 text-xl z-20">▼</div>
+              </div>
+
+              {spinResult !== null && (
+                <div className="text-center text-xs font-bold bg-emerald-500/20 text-emerald-400 px-4 py-1.5 rounded-full border border-emerald-500/30 animate-pulse">
+                  🎉 Bon banyen! Ou genyen {spinResult} coins!
+                </div>
+              )}
+
+              <button onClick={handleSpin} disabled={spinning} className="w-full py-2.5 bg-[#1B6CF2] hover:bg-blue-600 disabled:bg-gray-600 rounded-xl font-bold text-xs uppercase tracking-wide transition transform active:scale-95">
+                {spinning ? "Ap Tounen..." : "🎡 Jwe Kounye a (-10 Coins)"}
+              </button>
+            </div>
+
+            {/* Other Coming Soon Games */}
+            <div className="space-y-2">
+              {[
+                { icon: "🧠", name: "Quiz Ayiti", desc: "Reponn kesyon kilti, genyen coins", prize: "50-500 coins" },
+                { icon: "⚔️", name: "Battle Mode", desc: "Goumen match konesans kont lòt jwè", prize: "100-1000 coins" },
+                { icon: "🔥", name: "Face à Face Live", desc: "Defi ant 2 moun an dirèk, piblik la ap vote", prize: "Visibilité + coins" },
+              ].map((g) => (
+                <div key={g.name} onClick={() => showNotif(`${g.name} - Disponib byento! 🎮`)} className="bg-[#0A1628] border border-[#1A2A4A] rounded-xl p-3 flex items-center justify-between cursor-pointer hover:border-[#00D4FF]/30 transition">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{g.icon}</span>
+                    <div>
+                      <h4 className="text-xs font-bold">{g.name}</h4>
+                      <p className="text-[10px] text-[#8A9BC0]">{g.desc}</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-[#FFD700] font-bold bg-yellow-500/10 px-2 py-1 rounded-md whitespace-nowrap">🏆 {g.prize}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ===== AI VIP TAB ===== */}
+        {tab === "ai" && (
+          <div className="space-y-4">
+            <div className="text-center space-y-1">
+              <div className="w-12 h-12 bg-gradient-to-tr from-[#1B6CF2] to-[#00D4FF] rounded-full flex items-center justify-center text-2xl mx-auto shadow-md">🤖</div>
+              <h2 className="text-base font-black">AI Assistant VIP</h2>
+              <p className="text-xs text-[#8A9BC0]">Kreye post, ekri bèl bio, oubyen jwenn lide pou kontni ou rapid kreyòl</p>
+            </div>
+
+            {/* Recommended Prompts suggestions */}
+            <div className="grid grid-cols-2 gap-2">
+              {["Ekri bio mwen", "Kreye post viral", "Idé publicité", "Texte motivation"].map((prompt) => (
+                <button key={prompt} onClick={() => setAiInput(prompt)} className="bg-[#0A1628] border border-[#1A2A4A] text-[#F0F4FF] text-left p-2.5 rounded-xl text-[11px] font-medium hover:border-[#1B6CF2] transition">
+                  ✨ {prompt}
+                </button>
+              ))}
+            </div>
+
+            {/* Input field */}
+            <div className="space-y-2">
+              <textarea 
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                placeholder="Ki sa ou ta renmen AI a ede ou ekri jodi a?"
+                className="w-full h-24 bg-[#050A14] border border-[#1A2A4A] rounded-xl p-3 text-xs text-white focus:outline-none focus:border-[#1B6CF2] placeholder-[#8A9BC0] resize-none"
+              />
+              <button onClick={askAI} disabled={aiLoading} className="w-full py-2.5 bg-gradient-to-r from-[#1B6CF2] to-[#00D4FF] disabled:opacity-50 rounded-xl font-bold text-xs transition">
+                {aiLoading ? "AI a ap travay..." : "🚀 Mande AI VIP"}
+              </button>
+            </div>
+
+            {/* AI Output Stream */}
+            {aiResponse && (
+              <div className="bg-[#0A1628] border border-[#1A2A4A] rounded-xl p-4 space-y-2 text-xs leading-relaxed animate-fade-in">
+                <p className="font-bold text-[#00D4FF] flex items-center gap-1">🤖 Repons AI:</p>
+                <p className="text-[#F0F4FF] whitespace-pre-line">{aiResponse}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ===== PROFIL TAB (PLACEHOLDER) ===== */}
+        {tab === "profile" && (
+          <div className="text-center py-12 space-y-4">
+            <div className="w-20 h-20 rounded-full bg-gradient-to-tr from-[#1B6CF2] to-[#00D4FF] flex items-center justify-center font-bold text-2xl mx-auto shadow-xl">
+              User
+            </div>
+            <div>
+              <h3 className="text-base font-bold">Kretyen Ayisyen</h3>
+              <p className="text-xs text-[#8A9BC0]">@itilizatè_rezo</p>
+            </div>
+            <div className="bg-[#0A1628] border border-[#1A2A4A] rounded-xl p-4 max-w-xs mx-auto text-xs text-[#8A9BC0]">
+              Paj pwofil la ap devlope ak tout opsyon paramèt avanse byento! ⚙️
+            </div>
+          </div>
+        )}
+
+      </main>
+
+      {/* --- BOTTOM SYSTEM NAVIGATION BAR --- */}
+      <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-[#050A14]/95 backdrop-blur-md border-t border-[#1A2A4A] px-2 py-2 flex justify-between items-center z-40">
+        {tabs.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} className={`flex flex-col items-center justify-center flex-1 py-1 transition ${
+            tab === t.id ? "text-[#00D4FF] font-bold scale-105" : "text-[#8A9BC0] hover:text-white"
+          }`}>
+            <span className="text-lg mb-0.5">{t.icon}</span>
+            <span className="text-[9px] tracking-tight">{t.label}</span>
+          </button>
+        ))}
+      </nav>
+
+    </div>
+  );
+}
